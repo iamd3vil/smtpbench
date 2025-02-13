@@ -26,7 +26,7 @@ type Args struct {
 	Port                  int
 	TimeoutSeconds        int
 	EmailCount            int
-	AttachmentPath        string
+	AttachmentPaths       []string
 }
 
 func main() {
@@ -63,7 +63,10 @@ func parseArgs() Args {
 	flag.IntVar(&args.Port, "port", 25, "SMTP server port")
 	flag.IntVar(&args.TimeoutSeconds, "timeout-seconds", 10, "Connection timeout in seconds")
 	flag.IntVar(&args.EmailCount, "email-count", 0, "Number of emails to send (overrides duration)")
-	flag.StringVar(&args.AttachmentPath, "attachment", "", "Path to file to attach to the email")
+	flag.Func("attachment", "Path to file to attach to the email", func(flagValue string) error {
+		args.AttachmentPaths = append(args.AttachmentPaths, flagValue)
+		return nil
+	})
 	flag.Parse()
 
 	// Validate required arguments
@@ -96,19 +99,22 @@ func createSMTPPool(args Args) (*smtppool.Pool, error) {
 	return smtppool.New(config)
 }
 
-func addAttachment(email *smtppool.Email, filepath string) error {
-	if filepath == "" {
-		return nil
-	}
+func addAttachments(email *smtppool.Email, filepaths []string) error {
+	for _, filepath := range filepaths {
+		if filepath == "" {
+			continue
+		}
 
-	file, err := os.Open(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to open attachment file: %v", err)
-	}
-	defer file.Close()
+		file, err := os.Open(filepath)
+		if err != nil {
+			return fmt.Errorf("failed to open attachment file: %v", err)
+		}
 
-	filename := path.Base(filepath)
-	email.Attach(file, filename, "")
+		filename := path.Base(filepath)
+		email.Attach(file, filename, "")
+
+		file.Close()
+	}
 
 	return nil
 }
@@ -121,7 +127,7 @@ func buildEmail(args Args) (smtppool.Email, error) {
 		Text:    []byte("This is a test email for SMTP benchmarking."),
 	}
 
-	if err := addAttachment(&email, args.AttachmentPath); err != nil {
+	if err := addAttachments(&email, args.AttachmentPaths); err != nil {
 		return email, err
 	}
 
