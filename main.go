@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/knadh/smtppool"
@@ -64,6 +65,21 @@ func parseArgs() Args {
 	flag.IntVar(&args.EmailCount, "email-count", 0, "Number of emails to send (overrides duration)")
 	flag.StringVar(&args.AttachmentPath, "attachment", "", "Path to file to attach to the email")
 	flag.Parse()
+
+	// Validate required arguments
+	if args.SMTPServer == "" {
+		log.Fatal("SMTP server address is required")
+	}
+	if args.From == "" {
+		log.Fatal("Sender email address is required")
+	}
+	if args.To == "" {
+		log.Fatal("Recipient email address is required")
+	}
+	if args.ConcurrentConnections < 1 {
+		log.Fatal("Concurrent connections must be greater than 0")
+	}
+
 	return args
 }
 
@@ -122,8 +138,8 @@ func runBenchmark(pool *smtppool.Pool, email smtppool.Email, args Args) {
 
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, args.ConcurrentConnections)
-	totalSent := 0
-	totalLatency := time.Duration(0)
+	var totalSent int64
+	var totalLatencyNanos int64
 
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetDescription("Sending emails"),
@@ -148,8 +164,8 @@ func runBenchmark(pool *smtppool.Pool, email smtppool.Email, args Args) {
 			if err != nil {
 				log.Printf("Error sending email: %v", err)
 			} else {
-				totalSent++
-				totalLatency += latency
+				atomic.AddInt64(&totalSent, 1)
+				atomic.AddInt64(&totalLatencyNanos, int64(latency))
 				bar.Add(1)
 			}
 		}()
@@ -158,14 +174,14 @@ func runBenchmark(pool *smtppool.Pool, email smtppool.Email, args Args) {
 	wg.Wait()
 	bar.Finish()
 	totalDuration := time.Since(startTime)
-	printResults(totalSent, totalLatency, totalDuration)
+	printResults(atomic.LoadInt64(&totalSent), time.Duration(atomic.LoadInt64(&totalLatencyNanos)), totalDuration)
 }
 
 func sendMultipleEmails(pool *smtppool.Pool, email smtppool.Email, args Args) {
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, args.ConcurrentConnections)
-	totalSent := 0
-	totalLatency := time.Duration(0)
+	var totalSent int64
+	var totalLatencyNanos int64
 	startTime := time.Now()
 
 	bar := progressbar.NewOptions(args.EmailCount,
@@ -190,8 +206,8 @@ func sendMultipleEmails(pool *smtppool.Pool, email smtppool.Email, args Args) {
 			if err != nil {
 				log.Printf("Error sending email: %v", err)
 			} else {
-				totalSent++
-				totalLatency += latency
+				atomic.AddInt64(&totalSent, 1)
+				atomic.AddInt64(&totalLatencyNanos, int64(latency))
 				bar.Add(1)
 			}
 		}()
@@ -200,10 +216,15 @@ func sendMultipleEmails(pool *smtppool.Pool, email smtppool.Email, args Args) {
 	wg.Wait()
 	bar.Finish()
 	totalDuration := time.Since(startTime)
-	printResults(totalSent, totalLatency, totalDuration)
+	printResults(atomic.LoadInt64(&totalSent), time.Duration(atomic.LoadInt64(&totalLatencyNanos)), totalDuration)
 }
 
-func printResults(totalSent int, totalLatency, totalDuration time.Duration) {
+func printResults(totalSent int64, totalLatency, totalDuration time.Duration) {
+	if totalSent == 0 {
+		fmt.Println("No emails were sent successfully")
+		return
+	}
+
 	throughput := float64(totalSent) / totalDuration.Seconds()
 	avgLatency := totalLatency / time.Duration(totalSent)
 
