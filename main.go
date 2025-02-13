@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/smtp"
+	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -23,6 +25,7 @@ type Args struct {
 	Port                  int
 	TimeoutSeconds        int
 	EmailCount            int
+	AttachmentPath        string
 }
 
 func main() {
@@ -34,7 +37,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	email := buildEmail(args)
+	email, err := buildEmail(args)
+	if err != nil {
+		log.Fatalf("Failed to build email: %v", err)
+	}
 
 	if args.EmailCount > 0 {
 		fmt.Printf("Sending %d test emails...\n", args.EmailCount)
@@ -56,6 +62,7 @@ func parseArgs() Args {
 	flag.IntVar(&args.Port, "port", 25, "SMTP server port")
 	flag.IntVar(&args.TimeoutSeconds, "timeout-seconds", 10, "Connection timeout in seconds")
 	flag.IntVar(&args.EmailCount, "email-count", 0, "Number of emails to send (overrides duration)")
+	flag.StringVar(&args.AttachmentPath, "attachment", "", "Path to file to attach to the email")
 	flag.Parse()
 	return args
 }
@@ -73,19 +80,43 @@ func createSMTPPool(args Args) (*smtppool.Pool, error) {
 	return smtppool.New(config)
 }
 
-func buildEmail(args Args) []byte {
-	return []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: SMTP Benchmark\r\n\r\nThis is a test email for SMTP benchmarking.", args.From, args.To))
+func addAttachment(email *smtppool.Email, filepath string) error {
+	if filepath == "" {
+		return nil
+	}
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to open attachment file: %v", err)
+	}
+	defer file.Close()
+
+	filename := path.Base(filepath)
+	email.Attach(file, filename, "")
+
+	return nil
 }
 
-func sendEmail(pool *smtppool.Pool, email []byte, from, to string) error {
-	return pool.Send(smtppool.Email{
-		From: from,
-		To:   []string{to},
-		Text: email,
-	})
+func buildEmail(args Args) (smtppool.Email, error) {
+	email := smtppool.Email{
+		From:    args.From,
+		To:      []string{args.To},
+		Subject: "SMTP Benchmark",
+		Text:    []byte("This is a test email for SMTP benchmarking."),
+	}
+
+	if err := addAttachment(&email, args.AttachmentPath); err != nil {
+		return email, err
+	}
+
+	return email, nil
 }
 
-func runBenchmark(pool *smtppool.Pool, email []byte, args Args) {
+func sendEmail(pool *smtppool.Pool, email smtppool.Email) error {
+	return pool.Send(email)
+}
+
+func runBenchmark(pool *smtppool.Pool, email smtppool.Email, args Args) {
 	startTime := time.Now()
 	endTime := startTime.Add(time.Duration(args.DurationSeconds) * time.Second)
 
@@ -111,7 +142,7 @@ func runBenchmark(pool *smtppool.Pool, email []byte, args Args) {
 			defer func() { <-semaphore }()
 
 			start := time.Now()
-			err := sendEmail(pool, email, args.From, args.To)
+			err := sendEmail(pool, email)
 			latency := time.Since(start)
 
 			if err != nil {
@@ -130,7 +161,7 @@ func runBenchmark(pool *smtppool.Pool, email []byte, args Args) {
 	printResults(totalSent, totalLatency, totalDuration)
 }
 
-func sendMultipleEmails(pool *smtppool.Pool, email []byte, args Args) {
+func sendMultipleEmails(pool *smtppool.Pool, email smtppool.Email, args Args) {
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, args.ConcurrentConnections)
 	totalSent := 0
@@ -153,7 +184,7 @@ func sendMultipleEmails(pool *smtppool.Pool, email []byte, args Args) {
 			defer func() { <-semaphore }()
 
 			start := time.Now()
-			err := sendEmail(pool, email, args.From, args.To)
+			err := sendEmail(pool, email)
 			latency := time.Since(start)
 
 			if err != nil {
