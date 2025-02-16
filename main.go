@@ -87,15 +87,17 @@ func parseArgs() Args {
 }
 
 func createSMTPPool(args Args) (*smtppool.Pool, error) {
-	auth := smtp.PlainAuth("", args.Username, args.Password, args.SMTPServer)
 	config := smtppool.Opt{
 		Host:        args.SMTPServer,
 		Port:        args.Port,
 		MaxConns:    args.ConcurrentConnections,
 		IdleTimeout: time.Duration(args.TimeoutSeconds) * time.Second,
-		Auth:        auth,
 	}
 
+	if args.Username != "" && args.Password != "" {
+		auth := smtp.PlainAuth("", args.Username, args.Password, args.SMTPServer)
+		config.Auth = auth
+	}
 	return smtppool.New(config)
 }
 
