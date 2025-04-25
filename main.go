@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/smtp"
 	"os"
 	"path"
 	"sync"
@@ -95,7 +94,11 @@ func createSMTPPool(args Args) (*smtppool.Pool, error) {
 	}
 
 	if args.Username != "" && args.Password != "" {
-		auth := smtp.PlainAuth("", args.Username, args.Password, args.SMTPServer)
+		// Use smtppool.LoginAuth to allow unencrypted auth (no TLS)
+		auth := &smtppool.LoginAuth{
+			Username: args.Username,
+			Password: args.Password,
+		}
 		config.Auth = auth
 	}
 	return smtppool.New(config)
