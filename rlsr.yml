@@ -1,0 +1,59 @@
+releases:
+  - name: "Release to github"
+    dist_folder: "./dist"
+    targets:
+      github:
+        owner: "iamd3vil"
+        repo: "smtpbench"
+    checksum:
+      algorithm: "sha256"
+    builds:
+      - command: "go build -o ./dist/smtpbench-linux-amd64"
+        artifact: "./dist/smtpbench-linux-amd64"
+        archive_name: "smtpbench-{{ meta.tag }}-linux-amd64"
+        name: "Linux amd64 build"
+        env:
+          - "GOOS=linux"
+          - "GOARCH=amd64"
+      - command: "go build -o ./dist/smtpbench-linux-arm64"
+        artifact: "./dist/smtpbench-linux-arm64"
+        archive_name: "smtpbench-{{ meta.tag }}-linux-arm64"
+        name: "Linux arm64 build"
+        env:
+          - "GOOS=linux"
+          - "GOARCH=arm64"
+      - command: "go build -o ./dist/smtpbench-windows-amd64.exe"
+        artifact: "./dist/smtpbench-windows-amd64.exe"
+        archive_name: "smtpbench-{{ meta.tag }}-windows-amd64"
+        name: "Windows amd64 build"
+        env:
+          - "GOOS=windows"
+          - "GOARCH=amd64"
+      - command: "go build -o ./dist/smtpbench-windows-arm64.exe"
+        artifact: "./dist/smtpbench-windows-arm64.exe"
+        archive_name: "smtpbench-{{ meta.tag }}-windows-arm64"
+        name: "Windows arm64 build"
+        env:
+          - "GOOS=windows"
+          - "GOARCH=arm64"
+      - command: "go build -o ./dist/smtpbench-darwin-amd64"
+        artifact: "./dist/smtpbench-darwin-amd64"
+        archive_name: "smtpbench-{{ meta.tag }}-darwin-amd64"
+        name: "macOS amd64 build"
+        env:
+          - "GOOS=darwin"
+          - "GOARCH=amd64"
+      - command: "go build -o ./dist/smtpbench-darwin-arm64"
+        artifact: "./dist/smtpbench-darwin-arm64"
+        archive_name: "smtpbench-{{ meta.tag }}-darwin-arm64"
+        name: "macOS arm64 build"
+        env:
+          - "GOOS=darwin"
+          - "GOARCH=arm64"
+
+changelog:
+  format: "github"
+  exclude:
+    - "^chore:"
+    - "^doc:"
+    - "^ci:"
